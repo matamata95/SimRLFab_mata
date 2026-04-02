@@ -8,3 +8,6 @@ log/
 __pycache__/
 production/__pycache__/
 env/__pycache__/
+
+# Ignore test files
+test.py
