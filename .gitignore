@@ -1,0 +1,10 @@
+# Ignore vscode settings
+.vscode/
+
+# Ignore logs directory
+log/
+
+# Ignore bytecode files
+__pycache__/
+production/__pycache__/
+env/__pycache__/
