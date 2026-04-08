@@ -1,10 +1,7 @@
-from production.envs.time_calc import *
-
-"""
-Heuristic Decision Agents
-"""
-
 class Decision_Heuristic(object):
+    """
+    Heuristic Decision Agents
+    """
     def __init__(self, env, statistics, parameters, resources, agents, agents_resource):
         self.statistics = statistics
         self.parameters = parameters
