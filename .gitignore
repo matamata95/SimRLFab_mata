@@ -11,3 +11,4 @@ env/__pycache__/
 
 # Ignore test files
 test.py
+production/envs/function_helper_definition.txt
