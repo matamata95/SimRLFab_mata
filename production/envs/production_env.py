@@ -4,6 +4,7 @@ import simpy
 import numpy as np
 import pandas as pd
 from tensorforce.environments import Environment
+from logger import Console_export
 from logger import export_statistics_logging
 from production.envs.initialize_env import (
     define_production_parameters,
@@ -15,6 +16,9 @@ from production.envs.initialize_env import (
 from production.envs.transport import Transport
 from production.envs.time_calc import Time_calc
 from datetime import datetime
+
+
+FILE_TYPE = Console_export("").file_type
 
 
 class ProductionEnv(Environment):
@@ -314,7 +318,7 @@ class ProductionEnv(Environment):
         self.statistics['episode_log'].flush()
         os.fsync(self.statistics['episode_log'].fileno())
         
-        pd.DataFrame(self.statistics['stat_agent_reward'][:-1]).to_csv(self.parameters['PATH_TIME'] + "_agent_reward_log.txt", header=None, index=None, sep=',', mode='a')
+        pd.DataFrame(self.statistics['stat_agent_reward'][:-1]).to_csv(self.parameters['PATH_TIME'] + f"_agent_reward_log.{FILE_TYPE}", header=None, index=None, sep=',', mode='a')
 
         # Reset statistics for episode
         self.last_export_time = self.env.now

@@ -1,11 +1,12 @@
-import random
-from collections import deque
 from production.envs.time_calc import ZScoreNormalization
 from production.envs.transport import Transport
 from production.envs.machine import Machine, other_jobs
 from production.envs.sink import Sink
 from production.envs.source import Source
+from logger import Console_export
 from datetime import datetime
+import random
+from collections import deque
 import numpy as np
 import pandas as pd
 import simpy
@@ -17,6 +18,8 @@ EXPORT_FREQUENCY = 10 ** 3  # Number of steps between csv-export of log-files
 EXPORT_NO_LOGS = False  # Turn on/off export of log-files
 
 PATH_TIME = "log/" + datetime.now().strftime("%Y%m%d_%H%M%S")
+FILE_TYPE = Console_export("").file_type
+print("LOGGER FILE_TYPE:", FILE_TYPE)
 
 def define_production_parameters(env, episode):
     """
@@ -48,7 +51,7 @@ def define_production_parameters(env, episode):
     extend_production_parameters(parameters=parameters)
 
     # Export parameter config to csv
-    pd.DataFrame.from_dict(parameters, orient="index").to_csv(parameters['PATH_TIME'] + "_config_parameters.txt", sep=",")
+    pd.DataFrame.from_dict(parameters, orient="index").to_csv(parameters['PATH_TIME'] + f"_config_parameters.{FILE_TYPE}", sep=",")
 
     return parameters
 
@@ -177,8 +180,8 @@ def define_production_statistics(parameters):
 
     statistics.update({'stat_agent_reward': [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]})
 
-    statistics.update({'agent_reward_log': open(parameters['PATH_TIME'] + "_agent_reward_log.txt", "w")})
-    statistics.update({'episode_log': open(parameters['PATH_TIME'] + "_episode_log.txt", "w")})
+    statistics.update({'agent_reward_log': open(parameters['PATH_TIME'] + f"_agent_reward_log.{FILE_TYPE}", "w")})
+    statistics.update({'episode_log': open(parameters['PATH_TIME'] + f"_episode_log.{FILE_TYPE}", "w")})
     statistics.update({'episode_statistics': ['stat_machines_working', 'stat_machines_changeover',
                                               'stat_machines_broken', 'stat_machines_idle', 'stat_machines_processed_orders',
                                               'stat_transp_working', 'stat_transp_walking', 'stat_transp_handling',

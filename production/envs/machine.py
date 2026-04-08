@@ -1,5 +1,6 @@
 from production.envs.heuristics import Decision_Heuristic_Machine_FIFO
 from production.envs.resources import Resource
+from production.envs.time_calc import ZScoreNormalization
 import simpy
 
 
@@ -9,7 +10,8 @@ class Machine(Resource):
     def __init__(self, env, id, capacity, agent_type, machine_group,
                  statistics, parameters, resources, agents,
                  time_calc, location, label):
-        super().__init__(statistics, parameters, resources, agents, time_calc, location)
+        super().__init__(statistics, parameters, resources,
+                         agents, time_calc, location)
         print("Machine %s created" % id)
         self.env = env
         self.id = id
@@ -37,8 +39,14 @@ class Machine(Resource):
         self.env.process(self.break_machine())
         self.agent_type = agent_type
         if agent_type == "FIFO":
-            self.agent = Decision_Heuristic_Machine_FIFO(env=self.env, statistics=statistics, parameters=parameters,
-                                                         resources=resources, agents=agents, agents_resource=self)
+            self.agent = Decision_Heuristic_Machine_FIFO(
+                env=self.env,
+                statistics=statistics,
+                parameters=parameters,
+                resources=resources,
+                agents=agents,
+                agents_resource=self
+            )
         self.machine_group = machine_group
         self.counter = 0
         self.sum_reward = 0
@@ -66,7 +74,8 @@ class Machine(Resource):
         return max_wt
 
     def get_normalized_wt_all_machines(self):
-        return self.machine_wt_normalizer.get_z_score_normalization(self.get_max_waiting_time())
+        if self.machine_wt_normalizer is not None:
+            return self.machine_wt_normalizer.get_z_score_normalization(self.get_max_waiting_time())
 
     def get_inventory(self):
         currently_processing = 0

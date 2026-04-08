@@ -2,9 +2,12 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
+
 class Console_export(object):
     def __init__(self, path):
-        self.path = path + "_sim_summary.txt"
+        self.file_type = "csv"
+        self.path = path + "_sim_summary." + self.file_type
+
     def printLog(self, *args, **kwargs):
         print(*args, **kwargs)
         with open(self.path,'a') as file:
@@ -16,6 +19,7 @@ def export_statistics_logging(statistics, parameters, resources):
     path = parameters['PATH_TIME']
     ce = Console_export(path)
     ce.printLog("Start logger ", datetime.now())
+    file_type = ce.file_type
 
     """ 
     Statistics & Logging 
@@ -89,7 +93,7 @@ def export_statistics_logging(statistics, parameters, resources):
     statistics['episode_log'].close()
 
     # Calculate statistics of last quarter
-    pd_episode_log = pd.read_csv(parameters['PATH_TIME'] + "_episode_log.txt", sep=",", header=0, index_col=0)
+    pd_episode_log = pd.read_csv(parameters['PATH_TIME'] + f"_episode_log.{file_type}", sep=",", header=0, index_col=0)
     last_quarter = int(len(pd_episode_log.index) / 4)
     dt_weights_time = pd_episode_log['dt'].tail(last_quarter).tolist()
     dt_weights_orders = pd_episode_log['finished_orders'].tail(last_quarter).tolist()
@@ -103,14 +107,14 @@ def export_statistics_logging(statistics, parameters, resources):
             lq_stats.update({kpi: np.average(pd_episode_log[kpi].tail(last_quarter).tolist(), weights=dt_weights_orders)})
         else:
             lq_stats.update({kpi: 0.0})
-    pd.DataFrame.from_dict(lq_stats, orient="index").to_csv(parameters['PATH_TIME'] + "_kpi_log.txt", sep=",", header=0)
+    pd.DataFrame.from_dict(lq_stats, orient="index").to_csv(parameters['PATH_TIME'] + f"_kpi_log.{file_type}", sep=",", header=0)
 
     ce.printLog("Export order log ", datetime.now())
 
     export_df = []
     for x in statistics['orders_done']:
         export_df.append(x.order_log)
-    pd.DataFrame(export_df).to_csv(str(path) + '_order_log.txt', header=None, index=None, sep=',', mode='a')
+    pd.DataFrame(export_df).to_csv(str(path) + f'_order_log.{file_type}', header=None, index=None, sep=',', mode='a')
 
     ce.printLog("Export transport log ", datetime.now())
 
@@ -122,7 +126,7 @@ def export_statistics_logging(statistics, parameters, resources):
         temp_df.columns = new_header 
         temp_df = temp_df.add_prefix("transp_" + str(x.id) + "_")  
         export_df = pd.concat([export_df, temp_df], axis=1)
-    export_df.to_csv(str(path) + '_transport_log.txt', index=None, sep=',', mode='a')
+    export_df.to_csv(str(path) + f'_transport_log.{file_type}', index=None, sep=',', mode='a')
 
     ce.printLog("Export machine log ", datetime.now())
 
@@ -134,6 +138,6 @@ def export_statistics_logging(statistics, parameters, resources):
         temp_df.columns = new_header 
         temp_df = temp_df.add_prefix("machine_" + str(x.id) + "_") 
         export_df = pd.concat([export_df, temp_df], axis=1)
-    export_df.to_csv(str(path) + '_machine_log.txt', index=None, sep=',', mode='a')
+    export_df.to_csv(str(path) + f'_machine_log.{file_type}', index=None, sep=',', mode='a')
                 
     ce.printLog("End logger ", datetime.now())
