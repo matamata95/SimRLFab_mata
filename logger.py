@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-import csv
-import os
 from datetime import datetime
 
 class Console_export(object):
