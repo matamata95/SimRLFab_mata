@@ -1,9 +1,4 @@
-# from production.envs.time_calc import *
-# from production.envs.heuristics import *
 from production.envs.resources import Resource
-# from production.envs.transport import *
-# from production.envs.order import *
-# import simpy
 
 
 class Sink(Resource):
@@ -24,7 +19,8 @@ class Sink(Resource):
         self.buffer_in_indiv.append(order)
         Sink.buffer_in.append(order)
         order.order_log.append(["sink",
-                                order.id, round(self.env.now, 5),
+                                order.id,
+                                round(self.env.now, 5),
                                 self.id])
         if len(Sink.buffer_in) >= self.parameters['NUM_ORDERS'] - 1:
             print("All orders processed")

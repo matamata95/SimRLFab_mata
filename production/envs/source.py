@@ -1,9 +1,6 @@
-from production.envs.time_calc import *
-from production.envs.heuristics import *
-from production.envs.resources import *
-from production.envs.transport import *
-from production.envs.order import *
-import simpy
+from production.envs.resources import Resource
+from production.envs.order import Order
+
 
 class Source(Resource):
     counter_order = 0

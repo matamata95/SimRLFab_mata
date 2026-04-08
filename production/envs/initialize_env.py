@@ -1,19 +1,14 @@
 import random
 from collections import deque
-from production.envs.time_calc import *
-from production.envs.heuristics import *
-from production.envs.resources import *
-from production.envs.transport import *
-from production.envs.machine import *
-from production.envs.sink import *
-from production.envs.source import *
-from production.envs.production_env import *
+from production.envs.time_calc import ZScoreNormalization
+from production.envs.transport import Transport
+from production.envs.machine import Machine, other_jobs
+from production.envs.sink import Sink
+from production.envs.source import Source
+from datetime import datetime
 import numpy as np
 import pandas as pd
-import progressbar
-import statistics
-import datetime as dt
-from collections import Counter
+import simpy
 from collections import defaultdict 
 
 PRINT_CONSOLE = False  # Extended print out during running, particularly for debugging
@@ -88,7 +83,10 @@ def extend_production_parameters(parameters):
 
     # Transport parameters
     parameters.update({'TRANSP_SPEED': 1.0 * 60.0})
-    parameters.update({'RESP_AREA_TRANSP': [[[True for i in range(parameters['NUM_RESOURCES'])] for j in range(parameters['NUM_RESOURCES'])] for k in range(parameters['NUM_TRANSP_AGENTS'])]})
+    parameters.update({'RESP_AREA_TRANSP': [[[True for i in range(parameters['NUM_RESOURCES'])] 
+                                             for j in range(parameters['NUM_RESOURCES'])] 
+                                             for k in range(parameters['NUM_TRANSP_AGENTS'])]
+                        })
 
     # Source parameters
     parameters.update({'SOURCE_CAPACITIES': [3] * parameters['NUM_SOURCES']})  # Number of load ports
@@ -119,10 +117,10 @@ def extend_production_parameters(parameters):
     parameters.update({'TIME_TO_UNLOAD_SOURCE': 60.0 / 60.0})
 
     # Transport time
-    parameters.update({'TRANSP_DISTANCE': [[50.0 for x in range(parameters['NUM_RESOURCES'])] for y in
-                                       range(parameters['NUM_RESOURCES'])]})
-    parameters.update({'TRANSP_TIME': [[0.0 for x in range(parameters['NUM_RESOURCES'])] for y in
-                                       range(parameters['NUM_RESOURCES'])]})
+    parameters.update({'TRANSP_DISTANCE': [[50.0 for x in range(parameters['NUM_RESOURCES'])] 
+                                           for y in range(parameters['NUM_RESOURCES'])]})
+    parameters.update({'TRANSP_TIME': [[0.0 for x in range(parameters['NUM_RESOURCES'])] 
+                                       for y in range(parameters['NUM_RESOURCES'])]})
     for i in range(parameters['NUM_RESOURCES']):
         for j in range(parameters['NUM_RESOURCES']):
             parameters['TRANSP_TIME'][i][j] = parameters['TRANSP_DISTANCE'][i][j] / parameters['TRANSP_SPEED']
@@ -212,25 +210,57 @@ def define_production_statistics(parameters):
 
     return statistics, stat_episode
 
-def define_production_resources(env, statistics, parameters, agents, time_calc):
+def define_production_resources(env, statistics, parameters,
+                                agents, time_calc):
     resources = dict()
 
     # Create an environment and start the setup process
-    resources.update({'machines': [Machine(env=env, id=i, capacity=parameters['MACHINE_CAPACITIES'][i],
-                     agent_type=parameters['MACHINE_AGENT_TYPE'],
-                     machine_group=parameters['MACHINE_GROUPS'][i],
-                     statistics=statistics, parameters=parameters, resources=resources, agents=agents, time_calc=time_calc,
-                     location= None, label= None)
-                        for i in range(parameters['NUM_MACHINES'])]})
-    resources.update({'sources': [Source(env=env, id=i + parameters['NUM_MACHINES'], capacity=parameters['SOURCE_CAPACITIES'][i],
-                     resp_area=parameters['RESP_AREA_SOURCE'][i],
-                     statistics=statistics, parameters=parameters, resources=resources, agents=agents, time_calc=time_calc,
-                     location=None, label=None)
-                        for i in range(parameters['NUM_SOURCES'])]})
-    resources.update({'sinks': [Sink(env=env, id=i + parameters['NUM_MACHINES'] + parameters['NUM_SOURCES'],
-                     statistics=statistics, parameters=parameters, resources=resources, agents=agents, time_calc=time_calc,
-                     location=None, label=None)
-                        for i in range(parameters['NUM_SINKS'])]})
+    resources.update(
+        {'machines': [Machine(
+            env=env,
+            id=i,
+            capacity=parameters['MACHINE_CAPACITIES'][i],
+            agent_type=parameters['MACHINE_AGENT_TYPE'],
+            machine_group=parameters['MACHINE_GROUPS'][i],
+            statistics=statistics,
+            parameters=parameters,
+            resources=resources,
+            agents=agents,
+            time_calc=time_calc,
+            location= None,
+            label= None
+            ) for i in range(parameters['NUM_MACHINES'])]
+        }
+    )
+    resources.update(
+        {'sources': [Source(
+            env=env, id=i + parameters['NUM_MACHINES'],
+            capacity=parameters['SOURCE_CAPACITIES'][i],
+            resp_area=parameters['RESP_AREA_SOURCE'][i],
+            statistics=statistics,
+            parameters=parameters,
+            resources=resources,
+            agents=agents,
+            time_calc=time_calc,
+            location=None,
+            label=None
+            ) for i in range(parameters['NUM_SOURCES'])]
+        }
+    )
+    resources.update(
+        {'sinks': [Sink(
+            env=env,
+            id=i + parameters['NUM_MACHINES'] + parameters['NUM_SOURCES'],
+            statistics=statistics,
+            parameters=parameters,
+            resources=resources,
+            agents=agents,
+            time_calc=time_calc,
+            location=None,
+            label=None
+            ) for i in range(parameters['NUM_SINKS'])]
+        }
+    )
 
     temp_resources = []
     temp_resources.extend(resources['machines'])
@@ -239,13 +269,30 @@ def define_production_resources(env, statistics, parameters, agents, time_calc):
 
     resources.update({'all_resources': temp_resources})
 
-    resources.update({'transps': [Transport(env=env, id=i, resp_area=parameters['RESP_AREA_TRANSP'][i],
-                                                  agent_type=parameters['TRANSP_AGENT_TYPE'],
-                                                  statistics=statistics, parameters=parameters, resources=resources,
-                                                  agents=agents, time_calc=time_calc, location=None, label=None)
-                                        for i in range(parameters['NUM_TRANSP_AGENTS'])]})
+    resources.update(
+        {'transps': [Transport(
+            env=env,
+            id=i,
+            resp_area=parameters['RESP_AREA_TRANSP'][i],
+            agent_type=parameters['TRANSP_AGENT_TYPE'],
+            statistics=statistics,
+            parameters=parameters,
+            resources=resources,
+            agents=agents,
+            time_calc=time_calc,
+            location=None,
+            label=None
+            ) for i in range(parameters['NUM_TRANSP_AGENTS'])]
+        }
+    )
 
-    resources.update({'repairman': simpy.PreemptiveResource(env, capacity=parameters['NUM_MACHINES'])})
+    resources.update(
+        {'repairman': simpy.PreemptiveResource(
+            env,
+            capacity=parameters['NUM_MACHINES']
+            )
+        }
+    )
 
     env.process(other_jobs(env, resources['repairman']))
 

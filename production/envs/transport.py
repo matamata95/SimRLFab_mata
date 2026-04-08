@@ -1,16 +1,32 @@
-from production.envs.time_calc import *
-from production.envs.heuristics import *
-from production.envs.resources import *
-from production.envs.reward_functions import *
-import simpy
-import numpy as np
+from production.envs.heuristics import (
+    Decision_Heuristic_Transp_NJF,
+    Decision_Heuristic_Transp_EMPTY,
+    Decision_Heuristic_Transp_FIFO
+)
+from production.envs.resources import Resource
+from production.envs.reward_functions import (
+    get_reward_valid_action,
+    get_reward_utilization,
+    get_reward_waiting_time_normalized,
+    get_reward_const_weighted,
+    get_reward_transport_time,
+    get_reward_throughput,
+    get_reward_weighted_objectives,
+    get_reward_conwip,
+    get_reward_sparse_utilization,
+    get_reward_sparse_valid_action,
+    get_reward_sparse_waiting_time
+)
+
 
 class Transport(Resource):
     all_transp_orders = []  # Overall list of available transport orders
     agents_waiting_for_action = []
 
-    def __init__(self, env, id, resp_area, agent_type, statistics, parameters, resources, agents, time_calc, location, label):
-        Resource.__init__(self, statistics, parameters, resources, agents, time_calc, location)
+    def __init__(self, env, id, resp_area, agent_type, statistics, parameters,
+                 resources, agents, time_calc, location, label):
+        super().__init__(statistics, parameters, resources,
+                          agents, time_calc, location)
         print("Transportation %s created" % id)
         self.env = env
         self.id = id
@@ -18,9 +34,16 @@ class Transport(Resource):
         self.resp_area = resp_area
         self.type = "transp"
         self.idle = env.event()
-        self.current_location = self.time_calc.randomStreams["transp_agent"][self.id].choice(
-            self.resources["sources"])
-        self.transp_log = [["action", "sim_time", "from_at", "to_at", "duration"]]
+        # Init location of transport agent is randomly assigned to 
+        # one of the sources. Sources are contained in the Resource 
+        # class with param .resources['sources'], which is passed to the
+        # Transport class
+        transp_rng = self.time_calc.randomStreams["transp_agent"]
+        self.current_location = transp_rng[self.id].choice(
+            self.resources["sources"]
+        )
+        self.transp_log = [["action", "sim_time", "from_at",
+                            "to_at", "duration"]]
         self.current_order = None
         self.time_start_idle = 0.0
         self.last_transport_time = 0.0
@@ -29,16 +52,24 @@ class Transport(Resource):
         self.last_handling_start = 0.0
         self.env.process(self.transporting())  # Processed started on creation of resource
         self.agent_type = agent_type
-        self.mapping = None
+        # Mapping intialized to an empty list instead of None to avoid
+        # possible future errors with NoneType when mapping is called
+        self.mapping = []
         if self.agent_type == "FIFO":
-            self.agent = Decision_Heuristic_Transp_FIFO(env=self.env, statistics=statistics, parameters=parameters,
-                                                        resources=resources, agents=agents, agents_resource=self)
+            self.agent = Decision_Heuristic_Transp_FIFO(
+                env=self.env, statistics=statistics, parameters=parameters,
+                resources=resources, agents=agents, agents_resource=self
+            )
         elif self.agent_type == "NJF":
-            self.agent = Decision_Heuristic_Transp_NJF(env=self.env, statistics=statistics, parameters=parameters,
-                                                        resources=resources, agents=agents, agents_resource=self)
+            self.agent = Decision_Heuristic_Transp_NJF(
+                env=self.env, statistics=statistics, parameters=parameters,
+                resources=resources, agents=agents, agents_resource=self
+            )
         elif self.agent_type == "EMPTY":
-            self.agent = Decision_Heuristic_Transp_EMPTY(env=self.env, statistics=statistics, parameters=parameters,
-                                                        resources=resources, agents=agents, agents_resource=self)
+            self.agent = Decision_Heuristic_Transp_EMPTY(
+                env=self.env, statistics=statistics, parameters=parameters,
+                resources=resources, agents=agents, agents_resource=self
+            )
         if self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'direct':
             self.mapping = []
             for mach in [x for x in self.resources['machines'] if x.id in [0,1,2,3,4]]:
@@ -54,12 +85,15 @@ class Transport(Resource):
             for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
                 self.mapping.append([mach, self.resources['sinks'][2]])
             print("Action mapping: ", [[x[0].id, x[1].id] for x in self.mapping])
+
             if self.parameters['TRANSP_AGENT_EMPTY_ACTION']:
-                self.mapping.extend([[-1, x] for x in self.resources['all_resources']])
+                self.mapping.extend([[-1, x] for x in self.resources['all_resources']]) 
                 print("Empty action: [-1, x]")
+
             if self.parameters['TRANSP_AGENT_WAITING_ACTION']:
                 self.mapping.append([-1, -1])
                 print("Waiting action: [-1, -1]")
+
         elif self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'resource':
             self.mapping = []
             for res in self.resources['all_resources']:
@@ -87,6 +121,8 @@ class Transport(Resource):
     def in_resp_area(self, order):
         return self.resp_area[order.current_location.id][order.get_next_step().id]
 
+    # Used to modify class "Transport" variable all_transp_orders when order
+    # is created and to check if waiting transport agents can already transport an order
     @classmethod
     def put(cls, order, trans_agents):
         if order not in Transport.all_transp_orders:
@@ -113,13 +149,16 @@ class Transport(Resource):
     def get_order_destination(self, order, origin, destination):
         result_order, result_origin, result_destination = None, None, None
         if destination.type == "machine" and order.get_next_step().type == "machine":
+            # If order destination is at current location and the
+            # machine or machine group is free
             if order.current_location == origin and \
                     order.get_next_step().machine_group == destination.machine_group and destination.is_free():
                 result_order = order
                 result_order.reserved = True
                 result_origin = order.current_location
                 result_destination = destination
-                # Adjust new destination machine and sink resource in process steps list of the order
+                # Adjust new destination machine and sink resource in 
+                # process steps list of the order
                 if order.get_next_step() != result_destination:
                     order.prod_steps[order.actual_step] = result_destination
                     if order.prod_steps[-2].id < 2:
@@ -139,6 +178,10 @@ class Transport(Resource):
 
     def get_next_action(self):
         self.counter += 1
+
+        # Define result_order, result_origin, result_destination
+        # outside of a loop to avoid unbound error
+        result_order, result_origin, result_destination = None, None, None
 
         # Transport when order waiting time threshold reached
         for order in [x for x in Transport.all_transp_orders if x.get_total_waiting_time() > self.parameters['WAITING_TIME_THRESHOLD'] and not x.reserved]:
@@ -164,24 +207,32 @@ class Transport(Resource):
         # Wait until action is calculated in "production_env"
         Transport.agents_waiting_for_action.append(self)
         yield self.parameters['continue_criteria']
+
+        # Silnce possible unbound error
+        assert self.next_action is not None
         self.last_action_id = self.next_action[0]
 
         # If agent type is a heuristic, then use heuristic decision agents
         if self.agent_type != "TRPO":
             result_order, result_destination = self.agent.act(Transport.all_transp_orders)
-            result_origin = self.next_action_origin = result_order.current_location
-            result_destination = self.next_action_destination = result_destination
-            result_valid = self.next_action_valid = True
-            if result_destination.id >= self.parameters['NUM_MACHINES']:
-                self.next_action[0] = result_destination.id - self.parameters['NUM_SOURCES']
-            else:
-                self.next_action[0] = result_destination.id
-            return result_order, result_destination
+            if result_order is not None and result_destination is not None:
+                result_origin = self.next_action_origin = result_order.current_location
+                result_destination = self.next_action_destination = result_destination
+                result_valid = self.next_action_valid = True
+                if result_destination.id >= self.parameters['NUM_MACHINES']:
+                    self.next_action[0] = result_destination.id - self.parameters['NUM_SOURCES']
+                else:
+                    self.next_action[0] = result_destination.id
+                return result_order, result_destination
 
         result_order = None
         result_origin = None
         result_destination = None
         self.latest_reward = 0.0
+
+        # Initializing as to avoid a possible unbound error
+        action_origin = None
+        action_destination = None
 
         # Translate RL-agent action output into dispatching action
         # Action-Mapping Coding: [<ORDER-ORIGIN>, <DESTINATION>]
@@ -191,8 +242,12 @@ class Transport(Resource):
         elif self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'resource':
             action_origin = self.mapping[self.next_action[0]]
             action_destination = self.mapping[self.next_action[1]]
-        if self.parameters['PRINT_CONSOLE']: print("Action ID: ", self.next_action[0], "\t Origin ID: ", action_origin.id,
-                                                   "\t Destination ID: ", action_destination.id)
+        if action_origin is not None and action_destination is not None:
+            if self.parameters['PRINT_CONSOLE']: print(
+                "Action ID: ", self.next_action[0],
+                "\t Origin ID: ", action_origin.id,
+                "\t Destination ID: ", action_destination.id
+            )
         if action_origin == -1 and action_destination == -1:  # Waiting action
             result_order = result_origin = result_destination = -1
             result_valid = True
@@ -237,6 +292,9 @@ class Transport(Resource):
             for loc in range(len(self.mapping)):
                 orig = self.mapping[loc][0]
                 dest = self.mapping[loc][1]
+
+                # orig = -1 is appended to self.mapping with
+                # [self.resources['sources'][0], mach] around line 60
                 if orig == -1:
                     state[loc] = True
                     continue

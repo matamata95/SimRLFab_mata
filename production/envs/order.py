@@ -1,8 +1,6 @@
-from production.envs.time_calc import *
-from production.envs.heuristics import *
-from production.envs.resources import *
-from production.envs.transport import *
-import simpy
+from production.envs.resources import Resource
+from production.envs.transport import Transport
+
 
 class Order(Resource):
     """An order specifices a production request.
@@ -10,7 +8,7 @@ class Order(Resource):
     """
 
     def __init__(self, env, id, prod_steps, variant, statistics, parameters, resources, agents, time_calc):
-        Resource.__init__(self, statistics, parameters, resources, agents, time_calc, None)
+        super().__init__(statistics, parameters, resources, agents, time_calc, None)
         self.env = env
         self.id = id
         self.prod_steps = prod_steps

@@ -1,15 +1,15 @@
-from production.envs.time_calc import *
-from production.envs.heuristics import *
-from production.envs.resources import *
+from production.envs.heuristics import Decision_Heuristic_Machine_FIFO
+from production.envs.resources import Resource
 import simpy
-import numpy as np
+
 
 class Machine(Resource):
     agent = None
 
-    def __init__(self, env, id, capacity, agent_type, machine_group, statistics, parameters, resources, agents,
+    def __init__(self, env, id, capacity, agent_type, machine_group,
+                 statistics, parameters, resources, agents,
                  time_calc, location, label):
-        Resource.__init__(self, statistics, parameters, resources, agents, time_calc, location)
+        super().__init__(statistics, parameters, resources, agents, time_calc, location)
         print("Machine %s created" % id)
         self.env = env
         self.id = id
