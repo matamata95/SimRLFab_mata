@@ -72,18 +72,33 @@ class Transport(Resource):
             )
         if self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'direct':
             self.mapping = []
-            for mach in [x for x in self.resources['machines'] if x.id in [0,1,2,3,4]]:
-                self.mapping.append([self.resources['sources'][0], mach])
-            for mach in [x for x in self.resources['machines'] if x.id in [1,2,3,4]]:
-                self.mapping.append([self.resources['sources'][1], mach])
-            for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
-                self.mapping.append([self.resources['sources'][2], mach])
-            for mach in [x for x in self.resources['machines'] if x.id in [0,1]]:
-                self.mapping.append([mach, self.resources['sinks'][0]])
-            for mach in [x for x in self.resources['machines'] if x.id in [2,3,4]]:
-                self.mapping.append([mach, self.resources['sinks'][1]])
-            for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
-                self.mapping.append([mach, self.resources['sinks'][2]])
+            # ! OLD MAPPING
+            # for mach in [x for x in self.resources['machines'] if x.id in [0,1,2,3,4]]:
+            #     self.mapping.append([self.resources['sources'][0], mach])
+            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][0].id, mach.id])
+            # for mach in [x for x in self.resources['machines'] if x.id in [1,2,3,4]]:
+            #     self.mapping.append([self.resources['sources'][1], mach])
+            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][1].id, mach.id])
+            # for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
+            #     self.mapping.append([self.resources['sources'][2], mach])
+            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][2].id, mach.id])
+            # for mach in [x for x in self.resources['machines'] if x.id in [0,1]]:
+            #     self.mapping.append([mach, self.resources['sinks'][0]])
+            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][0].id])
+            # for mach in [x for x in self.resources['machines'] if x.id in [2,3,4]]:
+            #     self.mapping.append([mach, self.resources['sinks'][1]])
+            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][1].id])
+            # for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
+            #     self.mapping.append([mach, self.resources['sinks'][2]])
+            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][2].id])
+
+            # ! NEW MAPPING
+            for src_idx, mach_ids in enumerate(self.parameters['RESP_AREA_SOURCE']):
+                for mid in mach_ids:
+                    self.mapping.append([self.resources['sources'][src_idx], self.resources['machines'][mid]])
+            for sink_ids, mach_idx in enumerate(self.parameters['RESP_AREA_SINK']):
+                for mach in mach_idx:
+                    self.mapping.append([self.resources['machines'][mach], self.resources['sinks'][sink_ids]])
             print("Action mapping: ", [[x[0].id, x[1].id] for x in self.mapping])
 
             if self.parameters['TRANSP_AGENT_EMPTY_ACTION']:
@@ -293,19 +308,23 @@ class Transport(Resource):
                 orig = self.mapping[loc][0]
                 dest = self.mapping[loc][1]
 
-                # orig = -1 is appended to self.mapping with
-                # [self.resources['sources'][0], mach] around line 60
+                # ! Special case for empty and waiting action [-1, x] -> always valid
                 if orig == -1:
                     state[loc] = True
                     continue
                 for order in Transport.all_transp_orders:
+                # * If an order can be be transported from to 'machine' type
                     if dest.type == "machine" and order.get_next_step().type == "machine":
+                        # * if order is not reserved AND current location hasn't been changed by another transport action AND
+                        # * its within the same machine group AND destination is free, then action is VALID
                         if not order.reserved and order.current_location == orig and \
                                 order.get_next_step().machine_group == dest.machine_group and \
                                 dest.is_free():
                             state[loc] = True
                             break
                     else:
+                        # * If an order is not reservered AND current location hasn't been changed by another transport action AND
+                        # * its next step is the destination, then action is VALID
                         if not order.reserved and order.current_location == orig and \
                                 order.get_next_step() == dest:
                             state[loc] = True
@@ -334,6 +353,8 @@ class Transport(Resource):
                                 break
         result_state.extend(state)
 
+        # ! additional state information based on configuration
+        # ! currently active = 'bin_machine_failure' and 'rel_buffer_fill_in_out'
         if 'bin_buffer_fill' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'bool'
             state = [False] * (self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'])
@@ -347,6 +368,7 @@ class Transport(Resource):
             state[self.current_location.id] = True
             result_state.extend(state)
 
+        # ! ACTIVE
         if 'bin_machine_failure' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'bool'
             state = [False] * self.parameters['NUM_MACHINES']
@@ -370,6 +392,7 @@ class Transport(Resource):
                 state[loc] = state[loc] / self.resources['all_resources'][loc].capacity
             result_state.extend(state)
 
+        # ! ACTIVE
         if 'rel_buffer_fill_in_out' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             state = [0.0] * (self.parameters['NUM_MACHINES'] * 2 + self.parameters['NUM_SOURCES'])
@@ -437,27 +460,30 @@ class Transport(Resource):
     def calculate_reward(self, action):
         result_reward = self.parameters['TRANSP_AGENT_REWARD_INVALID_ACTION']
         result_terminal = False
-        if self.invalid_counter < self.parameters['TRANSP_AGENT_MAX_INVALID_ACTIONS']:  # If true, then invalid action selected
-            if self.parameters['TRANSP_AGENT_REWARD'] == "valid_action":
-                result_reward = get_reward_valid_action(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "utilization":
-                result_reward = get_reward_utilization(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "waiting_time_normalized":
-                result_reward = get_reward_waiting_time_normalized(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "const_weighted":
-                result_reward = get_reward_const_weighted(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "transport_time":
-                result_reward = get_reward_transport_time(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "throughput":
-                result_reward = get_reward_throughput(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "weighted_objectives":
-                result_reward = get_reward_weighted_objectives(self, result_reward)
-            elif self.parameters['TRANSP_AGENT_REWARD'] == "conwip":
-                result_reward = get_reward_conwip()
-        else:
-            self.invalid_counter = 0
-            result_reward = 0.0
-            #result_terminal = True
+        # if self.invalid_counter < self.parameters['TRANSP_AGENT_MAX_INVALID_ACTIONS']:  # If true, then invalid action selected
+        if self.parameters['TRANSP_AGENT_REWARD'] == "valid_action":
+            result_reward = get_reward_valid_action(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "utilization":
+            result_reward = get_reward_utilization(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "waiting_time_normalized":
+            result_reward = get_reward_waiting_time_normalized(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "const_weighted":
+            result_reward = get_reward_const_weighted(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "transport_time":
+            result_reward = get_reward_transport_time(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "throughput":
+            result_reward = get_reward_throughput(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "weighted_objectives":
+            result_reward = get_reward_weighted_objectives(self, result_reward)
+        elif self.parameters['TRANSP_AGENT_REWARD'] == "conwip":
+            result_reward = get_reward_conwip()
+        # else:
+        #     self.invalid_counter = 0
+        #     result_reward = 0.0
+        #     #result_terminal = True
+        if self.invalid_counter >= self.parameters['TRANSP_AGENT_MAX_INVALID_ACTIONS']:
+            result_reward += self.parameters['TRANSP_AGENT_REPEAT_INVALID_ACTION']
+
 
         if self.next_action_valid:
             self.invalid_counter = 0
