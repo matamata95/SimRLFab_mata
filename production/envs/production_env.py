@@ -136,33 +136,47 @@ class ProductionEnv(Environment):
         elif self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'resource':
             number += (len(self.resources['transps'][0].mapping) - 1) ** 2 + 1
         # State value alternatives sorted according to the type
+        # Expands the state with relevant information according to the parameters
         if 'bin_buffer_fill' in self.parameters['TRANSP_AGENT_STATE']:
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES']
+
         if 'bin_location' in self.parameters['TRANSP_AGENT_STATE']:
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'] + self.parameters['NUM_SINKS']
+
+        # ! currently active
+        # Extends state space with information if machine is broken or not
         if 'bin_machine_failure' in self.parameters['TRANSP_AGENT_STATE']:
             number += self.parameters['NUM_MACHINES']
+
         if 'int_buffer_fill' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'int'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES']
+
         if 'rel_buffer_fill' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES']
+
+        # ! currently active
         if 'rel_buffer_fill_in_out' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] * 2 + self.parameters['NUM_SOURCES']
+
         if 'order_waiting_time' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'] 
+
         if 'order_waiting_time_normalized' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES']
+
         if 'distance_to_action' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'] 
+
         if 'remaining_process_time' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES']
+
         if 'total_process_time' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES']
@@ -307,7 +321,10 @@ class ProductionEnv(Environment):
             string = string + str(text) + ","
         string = string[:-1]
         titel = self.statistics['episode_log_header']
-        os.system('cls' if os.name == 'nt' else "printf '\033c'")
+
+        # Added clear console guard
+        if self.statistics['CLEAR_TERMINAL']:
+            os.system('cls' if os.name == 'nt' else "printf '\033c'")
         for index in range(len(export_data)):
             sys.stdout.write("\n " + titel[index] + ": \t" + export_data[index])
         sys.stdout.write("\n")
