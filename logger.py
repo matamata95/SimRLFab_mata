@@ -65,7 +65,8 @@ def export_statistics_logging(statistics, parameters, resources):
     cycle_time = 0.0
     for order in statistics['orders_done']:
         cycle_time += order.eop - order.sop
-    ce.printLog('Average order cycle time: ', cycle_time / len(statistics['orders_done']))
+    if len(statistics['orders_done']): 
+        ce.printLog('Average order cycle time: ', cycle_time / len(statistics['orders_done']))
 
     ce.printLog("##########################")
     ce.printLog("Machines")
