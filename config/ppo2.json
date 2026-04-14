@@ -1,6 +1,9 @@
 {
     "agent": "ppo",
-    "network": {"type": "auto", "internal_rnn": false},
+    "network": [
+                {"type":"dense","size":64},
+                {"type":"dense","size":32}
+                ],
     "batch_size": 4,
     "update_frequency": 4,
     "learning_rate": 0.001,
