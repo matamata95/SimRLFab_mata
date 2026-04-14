@@ -130,7 +130,8 @@ class Machine(Resource):
                 self.env.process(transp_agent.transporting())  # Restart idle process
 
     def put_buffer_in(self, order):
-        if self.is_free == False: raise Exception('Machine is not free / no capacity!')
+        # if self.is_free == False: raise Exception('Machine is not free / no capacity!')  # Compares the method instead of calling it
+        if not self.is_free(): raise Exception('Machine is not free / no capacity!')
         self.statistics['stat_inv_buffer_in_mean'][1][self.id] = (self.statistics['stat_inv_buffer_in_mean'][1][
                                                                       self.id] *
                                                                   self.statistics['stat_inv_buffer_in_mean'][0][
