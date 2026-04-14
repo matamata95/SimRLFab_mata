@@ -9,6 +9,8 @@ __pycache__/
 production/__pycache__/
 env/__pycache__/
 
+# Ignore agents
+agents/
+
 # Ignore test files
-test.py
 production/envs/function_helper_definition.txt
