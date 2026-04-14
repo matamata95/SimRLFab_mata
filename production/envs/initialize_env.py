@@ -16,13 +16,13 @@ from collections import defaultdict
 PRINT_CONSOLE = False  # Extended print out during running, particularly for debugging
 EPSILON = 0.000001  # Small number larger than zero used as "marginal" time step or to compare values
 EXPORT_FREQUENCY = 10 ** 3  # Number of steps between csv-export of log-files
-EXPORT_NO_LOGS = False  # Turn on/off export of log-files
+EXPORT_NO_LOGS = True  # Turn on/off export of log-files
 
 PATH_TIME = os.path.join("log", datetime.now().strftime("%Y%m%d_%H%M%S"))
 os.makedirs(PATH_TIME, exist_ok=True)
 
 FILE_TYPE = Console_export("").file_type
-print("LOGGER FILE_TYPE:", FILE_TYPE)
+# print("LOGGER FILE_TYPE:", FILE_TYPE)
 
 def define_production_parameters(env, episode):
     """
@@ -61,22 +61,28 @@ def define_production_parameters(env, episode):
 def extend_agent_parameters(parameters):
     # In this setting the RL-agent (TRPO-Algorithm) is controlling the transport decision making
     parameters.update({'TRANSP_AGENT_TYPE': "TRPO"})  # Alternativen: TRPO, FIFO, NJF, EMPTY
-    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure']})  # Alternatives: bin_buffer_fill, bin_machine_failure, bin_location, int_buffer_fill, rel_buffer_fill, rel_buffer_fill_in_out, order_waiting_time, order_waiting_time_normalized, distance_to_action, remaining_process_time, total_process_time
     parameters.update({'TRANSP_AGENT_REWARD': "utilization"})  # Alternatives: valid_action, utilization, waiting_time_normalized, throughput, conwip, const_weighted, weighted_objectives
     parameters.update({'TRANSP_AGENT_REWARD_SPARSE': ""})  # Alternatives: valid_action, utilization, waiting_time
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT': 0})  # Episode limit counter, default = 0
+    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure']})  # Alternatives: bin_buffer_fill, bin_machine_failure, bin_location, int_buffer_fill, rel_buffer_fill, rel_buffer_fill_in_out, order_waiting_time, order_waiting_time_normalized, distance_to_action, remaining_process_time, total_process_time
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT_TYPE': "valid"})  # Alternatives: valid, entry, exit, time
     parameters.update({'TRANSP_AGENT_REWARD_SUBSET_WEIGHTS': [1.0, 1.0]})  # Standard: [1.0, 1.0]  |  First: Const weight values for action to machine, Second: weight for action to sink
     parameters.update({'TRANSP_AGENT_REWARD_OBJECTIVE_WEIGHTS': {'utilization': 1.0, 'waiting_time': 1.0}})
-    parameters.update({'TRANSP_AGENT_REWARD_WAITING_ACTION': 0.0})
-    parameters.update({'TRANSP_AGENT_REWARD_INVALID_ACTION': 0.0})
+
+    parameters.update({'TRANSP_AGENT_REWARD_WAITING_ACTION': -0.1})
+    parameters.update({'TRANSP_AGENT_REWARD_INVALID_ACTION': -0.3})
+
     parameters.update({'TRANSP_AGENT_MAX_INVALID_ACTIONS': 5})  # Number of invalid actions until forced action is choosen
+    parameters.update({'TRANSP_AGENT_REPEAT_INVALID_ACTION': -0.5}) # ADDED FOR REPEATED INVALID ACTIONS
     parameters.update({'TRANSP_AGENT_WAITING_TIME_ACTION': 2})  # Waiting time of waiting time action
     parameters.update({'TRANSP_AGENT_ACTION_MAPPING': 'direct'})  # Alternatives: direct, resource
     parameters.update({'TRANSP_AGENT_WAITING_ACTION': False})  # Alternatives: True, False
     parameters.update({'TRANSP_AGENT_EMPTY_ACTION': False})  # Alternatives: True, False
     parameters.update({'TRANSP_AGENT_CONWIP_INV': 15})  # ConWIP inventory target if conwip reward is selected
     parameters.update({'WAITING_TIME_THRESHOLD': 1000})  # Forced order transport if threshold reached
+
+    # ! Explainability parameters
+    parameters.update({'TRANSP_AGENT_EXPLAINABILITY': False})  # Alternatives: True, False
 
 def extend_production_parameters(parameters):
     parameters.update({'NUM_TRANSP_AGENTS': 1})  # Number of transportation resources
@@ -94,15 +100,21 @@ def extend_production_parameters(parameters):
                                              for k in range(parameters['NUM_TRANSP_AGENTS'])]
                         })
 
+    # Added sink parameters
+    # Sink parameters
+    parameters.update({'RESP_AREA_SINK': [[0, 1, 2, 3, 4], [1, 2, 3, 4], [5, 6, 7]]})  # List of machine ids for which the sink is responsible, they must match the NUM_SINKS on line 87
+
     # Source parameters
     parameters.update({'SOURCE_CAPACITIES': [3] * parameters['NUM_SOURCES']})  # Number of load ports
-    parameters.update({'RESP_AREA_SOURCE': [[0, 1], [2, 3, 4], [5, 6, 7]]})  # Orders for which machines are created in the specific source
+    # Orders for which machines are created in the specific source, they must match the NUM_SOURCES on line 84
+    parameters.update({'RESP_AREA_SOURCE': [[0, 1], [2, 3, 4], [5, 6, 7]]})
     parameters.update({'MTOG': [10.0, 10.0, 10.0]})  # Mean Time Order Generation
     parameters.update({'SOURCE_ORDER_GENERATION_TYPE': "ALWAYS_FILL_UP"})  # Alternatives: ALWAYS_FILL_UP, MEAN_ARRIVAL_TIME
 
     # Machine parameters
     parameters.update({'MACHINE_AGENT_TYPE': "FIFO"})  # Alternatives: FIFO -> Decision rule for selecting the next available order from the load port
-    parameters.update({'MACHINE_GROUPS': [2, 1, 1, 1, 1, 3, 3, 3]})
+    # Machine groups are defined by hand and must match the NUM_MACHINES on line 83
+    parameters.update({'MACHINE_GROUPS': [2, 1, 1, 1, 1, 3, 3, 3]})  # Grouping of machines, e.g. in the layout.png
 
     parameters.update({'MIN_PROCESS_TIME': [0.5] * parameters['NUM_MACHINES']})
     parameters.update({'AVERAGE_PROCESS_TIME': [60.0] * parameters['NUM_MACHINES']})
@@ -202,6 +214,9 @@ def define_production_statistics(parameters):
         string = string + x + ","
     string = string[:-1]
     statistics['episode_log'].write("%s\n" % (string))
+
+    # Console clear guard
+    statistics.update({'CLEAR_TERMINAL': False})
 
     # Reward Agent Logger
     string = "episode,sim_step,sim_time,action,reward,action_valid,state"
