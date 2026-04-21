@@ -13,13 +13,13 @@ AGENT_SAVE_PATH = os.path.join('agents', 'ppo1')
 # tf.set_random_seed(10)
 os.makedirs(AGENT_SAVE_PATH, exist_ok=True)
 
-timesteps = 10 ** 3  # Set time steps per episode
-episodes = 10 ** 3  # Set number of episodes
+TIMESTEPS = 10 ** 2  # Set time steps per episode
+EPISODES = 10 ** 2  # Set number of episodes
 
 # Define environment
 environment_production = Environment.create(
     environment='production.envs.ProductionEnv',
-    max_episode_timesteps=timesteps,
+    max_episode_timesteps=TIMESTEPS,
 )
 
 # Tensorforce runner
@@ -29,7 +29,8 @@ agent = Agent.create(
     saver={
         'directory': os.path.join(AGENT_SAVE_PATH, 'model-checkpoint'),
         'frequency': 10,
-        'max-checkpoints': 5
+        'max-checkpoints': 5,
+        'load': False
     }
 )
 runner = Runner(agent=agent,
@@ -37,7 +38,7 @@ runner = Runner(agent=agent,
 environment_production.agents = runner.agent
 
 # Run training
-runner.run(num_episodes=episodes)
+runner.run(num_episodes=EPISODES)
 
 environment_production.environment.statistics.update({'time_end': environment_production.environment.env.now})
 export_statistics_logging(statistics=environment_production.environment.statistics,

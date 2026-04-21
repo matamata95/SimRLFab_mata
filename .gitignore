@@ -12,5 +12,5 @@ env/__pycache__/
 # Ignore agents
 agents/
 
-# Ignore test files
-production/envs/function_helper_definition.txt
+# Testing files
+log_suprresion.py

@@ -53,7 +53,7 @@ def define_production_parameters(env, episode):
     extend_agent_parameters(parameters=parameters)
     extend_production_parameters(parameters=parameters)
 
-    # Export parameter config to csv
+    # ! Export parameter config to csv
     pd.DataFrame.from_dict(parameters, orient="index").to_csv(os.path.join(parameters['PATH_TIME'], f"config_parameters.{FILE_TYPE}"), sep=",")
 
     return parameters
@@ -64,7 +64,9 @@ def extend_agent_parameters(parameters):
     parameters.update({'TRANSP_AGENT_REWARD': "utilization"})  # Alternatives: valid_action, utilization, waiting_time_normalized, throughput, conwip, const_weighted, weighted_objectives
     parameters.update({'TRANSP_AGENT_REWARD_SPARSE': ""})  # Alternatives: valid_action, utilization, waiting_time
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT': 0})  # Episode limit counter, default = 0
-    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure']})  # Alternatives: bin_buffer_fill, bin_machine_failure, bin_location, int_buffer_fill, rel_buffer_fill, rel_buffer_fill_in_out, order_waiting_time, order_waiting_time_normalized, distance_to_action, remaining_process_time, total_process_time
+    
+    #* STATE SPACE: State space is defined by following parameters
+    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure', 'bin_location', 'distance_to_action', 'total_process_time']})  # Alternatives: bin_buffer_fill, bin_machine_failure, bin_location, int_buffer_fill, rel_buffer_fill, rel_buffer_fill_in_out, order_waiting_time, order_waiting_time_normalized, distance_to_action, remaining_process_time, total_process_time
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT_TYPE': "valid"})  # Alternatives: valid, entry, exit, time
     parameters.update({'TRANSP_AGENT_REWARD_SUBSET_WEIGHTS': [1.0, 1.0]})  # Standard: [1.0, 1.0]  |  First: Const weight values for action to machine, Second: weight for action to sink
     parameters.update({'TRANSP_AGENT_REWARD_OBJECTIVE_WEIGHTS': {'utilization': 1.0, 'waiting_time': 1.0}})
@@ -215,7 +217,7 @@ def define_production_statistics(parameters):
     string = string[:-1]
     statistics['episode_log'].write("%s\n" % (string))
 
-    # Console clear guard
+    # ! Console clear guard
     statistics.update({'CLEAR_TERMINAL': False})
 
     # Reward Agent Logger
