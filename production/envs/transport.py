@@ -354,7 +354,6 @@ class Transport(Resource):
         result_state.extend(state)
 
         # ! additional state information based on configuration
-        # ! currently active = 'bin_machine_failure' and 'rel_buffer_fill_in_out'
         if 'bin_buffer_fill' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'bool'
             state = [False] * (self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'])

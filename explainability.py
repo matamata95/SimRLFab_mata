@@ -6,7 +6,7 @@ import unittest.mock as mock
 
 AGENT_FOLDER = 'ppo1'
 AGENT_PATH = os.path.join('agents', AGENT_FOLDER)
-STATES_PATH = r"C:\Users\grulovicma\Matija Grulovic\GitHub\SimRLFab_mata\log\20260421_141658\agent_reward_log.csv"
+STATES_PATH = r"C:\Users\grulovicma\Matija Grulovic\GitHub\SimRLFab_mata\log\expl_log\agent_reward_log.csv"
 TIME_STEPS = 10 ** 2
 EPISODES = 10 ** 1
 TOP_K = 10
@@ -62,12 +62,6 @@ def build_feature_names(parameters):
     """
     Returns a list of human-readable names for every element of the state vector,
     built from parameters dictionary.
-
-    Current state vector layout (47 elements for default config):
-      [0  - 19]  valid-action mask          (len(mapping) = 20 entries)
-      [20 - 27]  bin_machine_failure        (NUM_MACHINES = 8 entries)
-      [28 - 43]  machine buffer_in/out free (NUM_MACHINES * 2 = 16 entries)
-      [44 - 46]  source buffer_out free     (NUM_SOURCES = 3 entries)
 
     State vector depends on the order of features defined in Transport.calculate_state().
     Current order is: 
@@ -206,27 +200,6 @@ def build_action_labels_from_parameters(parameters):
 
     return labels
 
-# ! DEPRECATED
-# def build_action_labels(mapping):
-#     """
-#     Builds action label strings from a transport.mapping list.
-#     Handles regular [origin, destination] pairs, empty actions [-1, dest],
-#     and the waiting action [-1, -1].
-#     """
-#     labels = []
-#     for entry in mapping:
-#         if entry == [-1, -1] or entry == -1:
-#             labels.append("wait")
-#         elif isinstance(entry, list) and entry[0] == -1:
-#             dest = entry[1]
-#             labels.append(f"goto_{dest.type[0]}{dest.id}")
-#         elif isinstance(entry, list):
-#             o, d = entry[0], entry[1]
-#             labels.append(f"{o.type[0]}{o.id}->{d.type[0]}{d.id}")
-#         else:
-#             labels.append(str(entry))
-#     return labels
-
 
 def grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx):
     """
@@ -270,6 +243,13 @@ def forward(state, W0, b0, W1, b1, Wo, bo):
     return logits, probs, h0, h1
 
 
+# ! implement a heuristic to select material with the longest waiting time at machine/source
+# ! to compare to the agents decisions.
+
+# ! use copilot to visualize logs
+
+# ! try codex from openAI
+
 def fetch_weights(agent):
     """
     Fetches all policy network weight matrices from the agent
@@ -294,7 +274,7 @@ def integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx, steps=50):
         ig      — shape (feature_dim,)   attribution score per feature (signed, additive)
         probs   — shape (action_dim,)   actual action probabilities at the given state
     """
-    # ?What is a good baseline for a factory state? Averaging all states during training is a good start.
+    # ?What is a good baseline for a factory state? Averaging all states during training is a good starting point.
     baseline = calculate_base_state(STATES_PATH)
     alphas = np.linspace(0.0, 1.0, steps)
     grad_acc = np.zeros_like(state)
@@ -343,7 +323,7 @@ def explain_action(state, action_idx, action_labels, feature_names,
 
     return "\n".join(lines)
 
-
+# ! implement sverl-p with "https://github.com/djeb20/SVERL_icml_2023" as a guideline
 def sverl_p(state, background_states, critic_forward_fn, feature_names, top_k=10):
     """
     Computes SVERL-P Shapley values for a single state using KernelSHAP
@@ -392,7 +372,7 @@ def collect_background_states(agent, tf_env, n_episodes=10):
             collected.append(np.array(state, dtype=np.float32))
             action = agent.act(states=state, independent=True)
             state, terminal, _ = tf_env.execute(actions=action)
-    return np.array(collected)   # shape (N, 80)
+    return np.array(collected)   # shape (N, feature_dim)
 
 
 def calculate_base_state(df_path):
@@ -439,13 +419,18 @@ states_47 = [
 # 1. valid action mask (20 entries)
 # 2. bin_location (14 entries)
 # 3. bin_machine_failure (8 entries)
-# 4. distance_to_action (11 entries)
-# 5. total_process_time (8 entries)
+# 4. rel_buffer_fill_in_out (19 entries)
+# 5. distance_to_action (11 entries)
+# 6. total_process_time (8 entries)
 
 states_80 = [
     [
-    0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
-    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.6666666666666667, 1.0, 1.0, 1.0, 0.5, 1.0, 0.0, 1.0, 1.0, 0.8333333333333334, 1.0, 0.16666666666666663, 0.0, 0.0, 0.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.03564612344572155, 0.06746045665328886, 0.3626716318371299, 0.09322553295184832, 0.47325591487986696, 2.9510828526149706, 0.26557630611757477, 0.3229432733691529
+    0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,  # valid action mask first 20 entries
+    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # agent location - machine/source/sink one-hot
+    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,  # machine failure flags
+    1.0, 1.0, 1.0, 1.0, 0.6666666666666667, 1.0, 1.0, 1.0, 0.5, 1.0, 0.0, 1.0, 1.0, 0.8333333333333334, 1.0, 0.16666666666666663, 0.0, 0.0, 0.0,  # rel buffers in/out
+    -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # distance to action destination
+    0.03564612344572155, 0.06746045665328886, 0.3626716318371299, 0.09322553295184832, 0.47325591487986696, 2.9510828526149706, 0.26557630611757477, 0.3229432733691529  # total process time for current orders at machines
     ]
 ]
 
