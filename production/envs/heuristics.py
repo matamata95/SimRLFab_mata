@@ -22,7 +22,7 @@ class Decision_Heuristic(object):
         if order.get_next_step().type == "sink":
             return order.get_next_step(), min_buffer_fill
         for mach in [x for x in resources['machines'] if order.get_next_step().machine_group == x.machine_group]:
-            if len(mach.buffer_in) < min_buffer_fill:
+            if mach.is_free() and len(mach.buffer_in) < min_buffer_fill:
                 result_machine = mach
                 min_buffer_fill = len(mach.buffer_in)
         return result_machine, min_buffer_fill
@@ -77,6 +77,9 @@ class Decision_Heuristic_Transp_EMPTY(Decision_Heuristic):
 
 class Decision_Heuristic_Transp_FIFO(Decision_Heuristic):
     """Selects the next transportation order for a transportation agent based on the total order waiting time"""
+    # ! over 1k episodes the util of smaller groups is lower than for larger groups, because FIFO selects the group with smallest buffer fills
+    # ! this leads to more orders being processed in larger groups, which have higher util due to more machines, while smaller groups are only selected
+    # ! when the big group buffer is filled, leading to them having smaller utilization.
     def __init__(self, env, statistics, parameters, resources, agents, agents_resource):
         super(self.__class__, self).__init__(env=env, statistics=statistics, parameters=parameters, resources=resources, agents=agents, agents_resource=agents_resource)
         agents['Decision_Heuristic_Transp'].append(self)
@@ -86,6 +89,7 @@ class Decision_Heuristic_Transp_FIFO(Decision_Heuristic):
         if states == None:
             return None, None
         for order in sorted(states, key=lambda x: x.id, reverse=False):  # FIFO sort based on ID
+            #  Added order.is_free() condition to avoid selecting machines that are not free
             if order.get_next_step().is_free_machine_group() and not order.reserved:
                 order = states.pop(states.index(order))
                 order.reserved = True

@@ -18,8 +18,8 @@ class Time_calc:
         """Random Seed for random numbers"""
         np.random.seed(parameters['SEED'] + episode)
 
-        # Change seed randomStreams for reproducibility
-        stream_seed = None
+        # ! Change seed randomStreams for reproducibility
+        stream_seed = parameters['SEED'] + episode
         self.randomStreams = {}
         self.randomStreams["process_time"] = [
             np.random.default_rng(stream_seed) for _ in range(num_machines)

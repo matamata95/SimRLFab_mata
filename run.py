@@ -1,20 +1,33 @@
+import os
+
+# Set TensorFlow to use deterministic operations for reproducibility
+os.environ['TF_DETERMINISTIC_OPS'] = '1'
+os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+
+import random
+import numpy as np
+
+SEED = 10
+random.seed(SEED)
+np.random.seed(SEED)
+
 from logger import export_statistics_logging
 from tensorforce.environments import Environment
 from tensorforce.execution import Runner
 from tensorforce.agents import Agent
 import tensorflow as tf
-from datetime import datetime
-import os
 
-# date_time = datetime.now().strftime("%Y_%m_%d_%H-%M-%S")
+tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.threading.set_intra_op_parallelism_threads(1)
+
 AGENT_SAVE_PATH = os.path.join('agents', 'ppo1')
 
-
-# tf.set_random_seed(10)
+# ! set seed
+tf.random.set_seed(SEED)
 os.makedirs(AGENT_SAVE_PATH, exist_ok=True)
 
 TIMESTEPS = 10 ** 2  # Set time steps per episode
-EPISODES = 10 ** 2  # Set number of episodes
+EPISODES = 10 ** 3  # Set number of episodes
 
 # Define environment
 environment_production = Environment.create(

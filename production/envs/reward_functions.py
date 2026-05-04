@@ -9,6 +9,7 @@ def get_reward_valid_action(transport_resource, invalid_reward):
         result_reward = 1.0
     return result_reward
 
+
 def get_reward_utilization(transport_resource, invalid_reward):
     result_reward = invalid_reward
     if transport_resource.next_action_destination == -1 or transport_resource.next_action_origin == -1:  # Waiting or empty action selected
@@ -18,8 +19,14 @@ def get_reward_utilization(transport_resource, invalid_reward):
         for mach in transport_resource.resources['machines']:
             util += mach.get_utilization_step()
         util = util / transport_resource.parameters['NUM_MACHINES']
-        transport_resource.last_reward_calc = util
-        result_reward = np.exp(util / 1.5) - 1.0
+        # ! normalize reward to be between 0 and 1
+        raw = np.exp(util / 1.5) - 1.0
+        max_util = np.exp(1.0 / 1.5) - 1.0
+        norm = raw / max_util
+        result_reward = norm
+        transport_resource.last_reward_calc = norm
+
+        # result_reward = np.exp(util / 1.5) - 1.0
         if transport_resource.next_action_destination.type == 'machine':
             result_reward = transport_resource.parameters['TRANSP_AGENT_REWARD_SUBSET_WEIGHTS'][0] * result_reward
         else:
@@ -72,6 +79,9 @@ def get_reward_throughput(transport_resource, invalid_reward):
     elif transport_resource.next_action_valid:
         if transport_resource.next_action_destination.type == 'sink':
             result_reward = 1.0
+        # ! added reward for action to machine to encourage throughput
+        elif transport_resource.next_action_origin.type == 'machine':
+            result_reward = 0.4
         else:
             result_reward = 0.0
     return result_reward

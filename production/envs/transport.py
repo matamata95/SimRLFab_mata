@@ -72,25 +72,6 @@ class Transport(Resource):
             )
         if self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'direct':
             self.mapping = []
-            # ! OLD MAPPING
-            # for mach in [x for x in self.resources['machines'] if x.id in [0,1,2,3,4]]:
-            #     self.mapping.append([self.resources['sources'][0], mach])
-            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][0].id, mach.id])
-            # for mach in [x for x in self.resources['machines'] if x.id in [1,2,3,4]]:
-            #     self.mapping.append([self.resources['sources'][1], mach])
-            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][1].id, mach.id])
-            # for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
-            #     self.mapping.append([self.resources['sources'][2], mach])
-            #     print("Added mapping [source, machine ID]: ", [self.resources['sources'][2].id, mach.id])
-            # for mach in [x for x in self.resources['machines'] if x.id in [0,1]]:
-            #     self.mapping.append([mach, self.resources['sinks'][0]])
-            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][0].id])
-            # for mach in [x for x in self.resources['machines'] if x.id in [2,3,4]]:
-            #     self.mapping.append([mach, self.resources['sinks'][1]])
-            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][1].id])
-            # for mach in [x for x in self.resources['machines'] if x.id in [5,6,7]]:
-            #     self.mapping.append([mach, self.resources['sinks'][2]])
-            #     print("Added mapping [machine, sink ID]: ", [mach.id, self.resources['sinks'][2].id])
 
             # ! NEW MAPPING
             for src_idx, mach_ids in enumerate(self.parameters['RESP_AREA_SOURCE']):

@@ -94,10 +94,11 @@ class ProductionEnv(Environment):
             self.statistics['stat_agent_reward'][-1][5] = agent.next_action_valid
             self.statistics['stat_agent_reward'].append([self.count_episode, self.counter, round(self.env.now, 5), None, None, None, states])
 
-            return states, terminal, reward
+            return self._build_state(states), terminal, reward
 
     def reset(self):
         print("####### Reset Environment #######")
+        # ! Environment is not actually reset, it persists over episodes and N actions are executed until episode ends.
 
         self.count_episode += 1
         self.counter = 0    
@@ -114,7 +115,8 @@ class ProductionEnv(Environment):
 
         states = self.resources['transps'][0].calculate_state()
 
-        return states
+        # ! added action mask to state
+        return self._build_state(states)
 
     def close(self):
         print("####### Close Environment #######")
@@ -128,8 +130,10 @@ class ProductionEnv(Environment):
         pass
 
     def states(self):
-        state_type = 'bool'
+        # state_type = 'bool'
+        state_type = 'float'
         number = 0
+
         # Avaliable Action are always part of state vector
         if self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'direct':
             number += len(self.resources['transps'][0].mapping)
@@ -143,7 +147,6 @@ class ProductionEnv(Environment):
         if 'bin_location' in self.parameters['TRANSP_AGENT_STATE']:
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES'] + self.parameters['NUM_SINKS']
 
-        # ! currently active
         # Extends state space with information if machine is broken or not
         if 'bin_machine_failure' in self.parameters['TRANSP_AGENT_STATE']:
             number += self.parameters['NUM_MACHINES']
@@ -156,7 +159,6 @@ class ProductionEnv(Environment):
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] + self.parameters['NUM_SOURCES']
 
-        # ! currently active
         if 'rel_buffer_fill_in_out' in self.parameters['TRANSP_AGENT_STATE']:
             state_type = 'float'
             number += self.parameters['NUM_MACHINES'] * 2 + self.parameters['NUM_SOURCES']
@@ -182,7 +184,15 @@ class ProductionEnv(Environment):
             number += self.parameters['NUM_MACHINES']
 
         print("State space size: ", number)
-        return dict(type=state_type, shape=(number))
+        return dict(observation=dict(type=state_type, shape=(number,)))
+    
+    # ! added _build_state
+    def _build_state(self, raw_state):
+        num_actions = len(self.resources['transps'][0].mapping)
+        return dict(
+            observation=raw_state,
+            action_mask=[bool(x) for x in raw_state[:num_actions]]
+        )
 
     def actions(self):
         if self.parameters['TRANSP_AGENT_ACTION_MAPPING'] == 'direct':
