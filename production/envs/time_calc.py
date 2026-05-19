@@ -16,10 +16,11 @@ class Time_calc:
         num_sources = parameters['NUM_SOURCES']
         num_transp = parameters['NUM_TRANSP_AGENTS']
         """Random Seed for random numbers"""
-        np.random.seed(parameters['SEED'] + episode)
+        SEED = parameters['SEED'] + episode
+        # np.random.seed(SEED)
 
         # ! Change seed randomStreams for reproducibility
-        stream_seed = parameters['SEED'] + episode
+        stream_seed = SEED
         self.randomStreams = {}
         self.randomStreams["process_time"] = [
             np.random.default_rng(stream_seed) for _ in range(num_machines)

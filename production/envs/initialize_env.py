@@ -60,15 +60,37 @@ def define_production_parameters(env, episode):
 
 def extend_agent_parameters(parameters):
     # ! In this setting the RL-agent (TRPO-Algorithm) is controlling the transport decision making
-    # parameters.update({'TRANSP_AGENT_TYPE': "TRPO"})  # Alternativen: TRPO, FIFO, NJF, EMPTY
-    parameters.update({'TRANSP_AGENT_TYPE': "FIFO"})
-    parameters.update({'TRANSP_AGENT_REWARD': "utilization"})  # Alternatives: valid_action, utilization, waiting_time_normalized, throughput, conwip, const_weighted, weighted_objectives
+    parameters.update({'TRANSP_AGENT_TYPE': "TRPO"})  # Alternativen: TRPO, FIFO, NJF, EMPTY
+    # parameters.update({'TRANSP_AGENT_TYPE': "FIFO"})
+    parameters.update({'TRANSP_AGENT_REWARD': "throughput"})  # Alternatives: valid_action, utilization, waiting_time_normalized, throughput, conwip, const_weighted, weighted_objectives
     parameters.update({'TRANSP_AGENT_REWARD_SPARSE': ""})  # Alternatives: valid_action, utilization, waiting_time
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT': 0})  # Episode limit counter, default = 0
     
     # * STATE SPACE: State space is defined by following parameters
-    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure', 'bin_location', 'distance_to_action', 'total_process_time']})  # Alternatives: bin_buffer_fill, bin_machine_failure, bin_location, int_buffer_fill, rel_buffer_fill, rel_buffer_fill_in_out, order_waiting_time, order_waiting_time_normalized, distance_to_action, remaining_process_time, total_process_time
-    # parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure']})  # Reduced state space for testing ~ 47 states
+    """
+    State space: bin_buffer_fill
+                bin_machine_failure 
+                bin_location 
+                int_buffer_fill, 
+                rel_buffer_fill
+                rel_buffer_fill_in_out
+                order_waiting_time
+                order_waiting_time_normalized
+                distance_to_action
+                remaining_process_time
+                total_process_time
+
+    """
+    # 80 states
+    # parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure', 'bin_location', 'distance_to_action', 'total_process_time']})
+
+    # 47 states
+    parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure']})
+
+    # 66 states
+    # parameters.update({'TRANSP_AGENT_STATE': ['rel_buffer_fill_in_out', 'bin_machine_failure', 'distance_to_action', 'total_process_time']})
+
+    # -------------------------------
     parameters.update({'TRANSP_AGENT_REWARD_EPISODE_LIMIT_TYPE': "valid"})  # Alternatives: valid, entry, exit, time
     # ! reward scaling (?)
     parameters.update({'TRANSP_AGENT_REWARD_SUBSET_WEIGHTS': [3.0, 3.0]})  # Standard: [1.0, 1.0]  |  First: Const weight values for action to machine, Second: weight for action to sink
@@ -80,7 +102,7 @@ def extend_agent_parameters(parameters):
 
     parameters.update({'TRANSP_AGENT_MAX_INVALID_ACTIONS': 5})  # Number of invalid actions until forced action is choosen
     parameters.update({'TRANSP_AGENT_REPEAT_INVALID_ACTION': -0.5}) # ADDED FOR REPEATED INVALID ACTIONS
-    parameters.update({'TRANSP_AGENT_WAITING_TIME_ACTION': 2})  # Waiting time of waiting time action
+    parameters.update({'TRANSP_AGENT_WAITING_TIME_ACTION': 1})  # Waiting time of waiting time action, default 2
     parameters.update({'TRANSP_AGENT_ACTION_MAPPING': 'direct'})  # Alternatives: direct, resource
     parameters.update({'TRANSP_AGENT_WAITING_ACTION': True})  # ! Alternatives: True, False
     parameters.update({'TRANSP_AGENT_EMPTY_ACTION': False})  # Alternatives: True, False
@@ -91,6 +113,7 @@ def extend_agent_parameters(parameters):
     parameters.update({'TRANSP_AGENT_EXPLAINABILITY': False})  # Alternatives: True, False
 
 def extend_production_parameters(parameters):
+    # ! Number of available agents.
     parameters.update({'NUM_TRANSP_AGENTS': 1})  # Number of transportation resources
     parameters.update({'NUM_MACHINES': 8})  # Number of machines in the machine shop
     parameters.update({'NUM_SOURCES': 3})
@@ -126,7 +149,7 @@ def extend_production_parameters(parameters):
     parameters.update({'AVERAGE_PROCESS_TIME': [60.0] * parameters['NUM_MACHINES']})
     parameters.update({'MAX_PROCESS_TIME': [150.0] * parameters['NUM_MACHINES']})
     parameters.update({'CHANGEOVER_TIME': 0.0})  # Default: Not used
-    parameters.update({'MTBF': [2000.0] * parameters['NUM_MACHINES']})  # Unscheduled breakdowns, default 1000.0
+    parameters.update({'MTBF': [1000.0] * parameters['NUM_MACHINES']})  # Unscheduled breakdowns, default 1000.0
     parameters.update({'MTOL': [200.0] * parameters['NUM_MACHINES']})
     parameters.update({'MACHINE_CAPACITIES': [6] * parameters['NUM_MACHINES']})  # Capacity for in and out machine buffers together
 

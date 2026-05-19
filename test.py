@@ -20,7 +20,7 @@ import tensorflow as tf
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
-AGENT_LOAD_PATH = os.path.join('agents', 'ppo1 - 80 states throughput')
+AGENT_LOAD_PATH = os.path.join('agents', 'ppo1 - 47 states throughput')
 
 # ! set seed
 tf.random.set_seed(SEED)

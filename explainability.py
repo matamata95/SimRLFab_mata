@@ -4,15 +4,7 @@ import io
 import unittest.mock as mock
 
 
-AGENT_FOLDER = 'ppo1'
-AGENT_PATH = os.path.join('agents', AGENT_FOLDER)
-STATES_PATH = r"C:\Users\grulovicma\Matija Grulovic\GitHub\SimRLFab_mata\log\expl_log\agent_reward_log.csv"
-TIME_STEPS = 10 ** 2
-EPISODES = 10 ** 1
-TOP_K = 10
-
-
-# ?Log-suppression because Jesus Christ.
+# ? Start Log suppression.
 
 _real_makedirs = os.makedirs
 _real_open = builtins.open
@@ -39,6 +31,8 @@ mock.patch('os.makedirs', _suppress_log_makedirs).start()
 mock.patch('builtins.open', _suppress_log_open).start()
 mock.patch('os.fsync', lambda fd: None).start()
 
+# ? End log suppression.
+
 import simpy
 import numpy as np
 import pandas as pd
@@ -49,13 +43,12 @@ from tensorforce.environments import Environment
 from production.envs.initialize_env import define_production_parameters
 from production.envs.production_env import ProductionEnv
 
-env = simpy.Environment()
-tf_env = Environment.create(
-    environment='production.envs.ProductionEnv',
-    max_episode_timesteps=TIME_STEPS,
-)
-agent = Agent.load(directory=AGENT_PATH, format='tensorflow', environment=tf_env)
-parameters = define_production_parameters(env, 0)
+
+def get_agent_variables(agent):
+    variables = []
+    for name in agent.get_variables():
+        variables.append(name)
+    return variables
 
 
 def build_feature_names(parameters):
@@ -65,7 +58,7 @@ def build_feature_names(parameters):
 
     State vector depends on the order of features defined in Transport.calculate_state().
     Current order is: 
-        1. valid-action mask                - depends on the amount of machines/sources/sinks and their mapping, defined in parameters
+        1. valid-action mask                - depends on the amount of machines/sources/sinks and their mapping, defined in parameters and if waiting action is enabled. Waiting action is LAST.
         2. bin_buffer_fill                  - num_machines + num_sources
         3. bin_location                     - num_machines + num_sources + num_sinks 
         4. bin_machine_failure              - num_machines
@@ -89,7 +82,7 @@ def build_feature_names(parameters):
 
     # Block 1: valid-action mask — one entry per mapping action
     for i, label in enumerate(action_labels):
-        names.append(f"valid_action[{i:02d}]  ({label})")
+        names.append(f"act_{i:02d}: {label}")
 
     # Block 2: bin_buffer_fill - one entry per machine/source
     if 'bin_buffer_fill' in parameters['TRANSP_AGENT_STATE']:
@@ -197,11 +190,14 @@ def build_action_labels_from_parameters(parameters):
         sink_id = num_m + num_so + sink_idx
         for mid in mach_ids:
             labels.append(f"machine_{mid}_to_sink_{sink_id}")
+    
+    if parameters['TRANSP_AGENT_WAITING_ACTION']:
+        labels.append("Waiting action")
 
     return labels
 
 
-def grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx):
+def grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx, valid_mask=None):
     """
     Analytical gradient of log P(action_idx) with respect to the input state vector.
     Returns:
@@ -218,6 +214,8 @@ def grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx):
     h0 = ACTIVATION(state @ W0 + b0)
     h1 = ACTIVATION(h0 @ W1 + b1)
     logits = h1 @ Wo + bo
+    if valid_mask is not None:
+        logits[valid_mask == 0] = -np.inf
     logits -= logits.max()
     exp = np.exp(logits); probs = exp / exp.sum()
 
@@ -229,7 +227,7 @@ def grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx):
     return dstate, probs
 
 
-def forward(state, W0, b0, W1, b1, Wo, bo):
+def forward(state, W0, b0, W1, b1, Wo, bo, valid_mask=None):
     """
     Full policy forward pass in numpy. Returns (logits, probs, h0, h1).
     """
@@ -237,6 +235,8 @@ def forward(state, W0, b0, W1, b1, Wo, bo):
     h0 = ACTIVATION(state @ W0 + b0)          # (64,)
     h1 = ACTIVATION(h0 @ W1 + b1)             # (32,)
     logits = h1 @ Wo + bo                     # (action_dim,)  — linear head
+    if valid_mask is not None:
+        logits[valid_mask == 0] = -np.inf
     logits -= logits.max()                    # numerical stability
     exp = np.exp(logits)
     probs = exp / exp.sum()                   # softmax
@@ -264,7 +264,7 @@ def fetch_weights(agent):
     return W0, b0, W1, b1, Wo, bo
 
 
-def integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx, steps=50):
+def integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx, steps=50, valid_mask=None):
     """
     Integrated Gradients attribution from a zero-baseline (empty factory).
     IG_i ≈ state_i * mean( dlogP/dstate_i  along the interpolation path )
@@ -282,16 +282,16 @@ def integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx, steps=50):
     # Cumulating gradients along a straight path from baseline to the actual state
     for a in alphas:
         interp = baseline + a * (state - baseline)
-        g, _ = grad_wrt_state(interp, W0, b0, W1, b1, Wo, bo, action_idx)
+        g, _ = grad_wrt_state(interp, W0, b0, W1, b1, Wo, bo, action_idx, valid_mask=valid_mask)
         grad_acc += g
     avg_grad = grad_acc / steps
     ig = (state - baseline) * avg_grad   # element-wise: x_i * mean_grad_i
-    _, probs = grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx)
+    _, probs = grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx, valid_mask=valid_mask)
     return ig, probs
 
 
 def explain_action(state, action_idx, action_labels, feature_names,
-                   W0, b0, W1, b1, Wo, bo, top_k=5, method='integrated_gradients'):
+                   W0, b0, W1, b1, Wo, bo, top_k=5, method='integrated_gradients', valid_mask=None):
     """
     Returns a human-readable string explaining why the agent chose action_idx.
 
@@ -299,17 +299,17 @@ def explain_action(state, action_idx, action_labels, feature_names,
             'integrated_gradients' → IG attribution (recommended after training)
     """
     if method == 'integrated_gradients':
-        attr, probs = integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx)
+        attr, probs = integrated_gradients(state, W0, b0, W1, b1, Wo, bo, action_idx, valid_mask=valid_mask)
         method_label = "Integrated Gradients"
     else:
-        attr, probs = grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx)
+        attr, probs = grad_wrt_state(state, W0, b0, W1, b1, Wo, bo, action_idx, valid_mask=valid_mask)
         method_label = "Saliency"
 
     top_pos = np.argsort(-attr)[:top_k]
     top_neg = np.argsort( attr)[:top_k]
 
     lines = [
-        f"Action chosen: [{action_idx}] {action_labels[action_idx]}",
+        f"Action chosen: [{action_idx}] {action_labels[action_idx] if action_idx < len(action_labels) else '?'}",
         f"  P(chosen) = {probs[action_idx]:.3f}",
         f"  Top-3 alternatives: "
         + ", ".join(f"[{i}] {action_labels[i]} ({probs[i]:.3f})" for i in np.argsort(-probs)[1:4]),
@@ -323,12 +323,8 @@ def explain_action(state, action_idx, action_labels, feature_names,
 
     return "\n".join(lines)
 
-# ! implement sverl-p with "https://github.com/djeb20/SVERL_icml_2023" as a guideline
-def sverl_p(state, background_states, critic_forward_fn, feature_names, top_k=10):
-    """
-    Computes SVERL-P Shapley values for a single state using KernelSHAP
-    with the PPO critic V(s) as the performance characteristic function.
-    """
+# ! Check implemention of sverl-p with "https://github.com/djeb20/SVERL_icml_2023" as a guideline
+def shap_explainer(state, background_states, critic_forward_fn, feature_names, top_k=10):
     explainer = shap.KernelExplainer(critic_forward_fn, background_states)
     phi = explainer.shap_values(state.reshape(1, -1), nsamples=512)[0]
     ranking = np.argsort(-np.abs(phi))[:top_k]
@@ -339,10 +335,15 @@ def sverl_p(state, background_states, critic_forward_fn, feature_names, top_k=10
 
 
 def fetch_critic_weights(agent):
-    Wc0 = np.array(agent.get_variable('baseline/baseline-network/state-dense0/weights'))  # (feature_dim, 64)
-    bc0 = np.array(agent.get_variable('baseline/baseline-network/state-dense0/bias'))      # (64,)
-    Wc1 = np.array(agent.get_variable('baseline/baseline-network/state-dense1/weights'))  # (64, 32)
-    bc1 = np.array(agent.get_variable('baseline/baseline-network/state-dense1/bias'))      # (32,)
+    """
+    Fetches all critic network weight matrices from the agent.
+    Sometimes the critic is stored under "baseline/baseline-network/observation-dense0/bias" with observation-dense0 instead of state-dense0.
+    Use get_agent_variables() to find the exact variable names in the agent.
+    """
+    Wc0 = np.array(agent.get_variable('baseline/baseline-network/observation-dense0/weights'))  # (feature_dim, 64)
+    bc0 = np.array(agent.get_variable('baseline/baseline-network/observation-dense0/bias'))      # (64,)
+    Wc1 = np.array(agent.get_variable('baseline/baseline-network/observation-dense1/weights'))  # (64, 32)
+    bc1 = np.array(agent.get_variable('baseline/baseline-network/observation-dense1/bias'))      # (32,)
     Wv  = np.array(agent.get_variable('baseline/action-distribution/deviations/deviations-linear/weights'))       # (32, 1)
     bv  = np.array(agent.get_variable('baseline/action-distribution/deviations/deviations-linear/bias'))           # (1,)
     return Wc0, bc0, Wc1, bc1, Wv, bv
@@ -358,7 +359,6 @@ def critic_forward(state, Wc0, bc0, Wc1, bc1, Wv, bv):
     return float(probs @ q)
 
 
-critic_weights = fetch_critic_weights(agent)
 def critic_value(masked_states):
     return np.array([critic_forward(s, *critic_weights) for s in masked_states])
 
@@ -369,7 +369,8 @@ def collect_background_states(agent, tf_env, n_episodes=10):
         state = tf_env.reset()
         terminal = False
         while not terminal:
-            collected.append(np.array(state, dtype=np.float32))
+            state_array = next(iter(state.values())) if isinstance(state, dict) else state  # TF env returns state as a dict, we need the actual state vector
+            collected.append(state_array)
             action = agent.act(states=state, independent=True)
             state, terminal, _ = tf_env.execute(actions=action)
     return np.array(collected)   # shape (N, feature_dim)
@@ -381,72 +382,123 @@ def calculate_base_state(df_path):
     states = df['state'][1::].to_list()
     states = [state[1:-1].split(",") for state in states]
     states = np.array(states, dtype=float)
-    avg_state = np.zeros_like(states[0], dtype=float)
-
-    for state in states:
-        avg_state += state
-    avg_state /= len(states)
-    
-    return avg_state
+    return states.mean(axis=0)
 
 
+def export_action(export_path, action_labels):
+    _real_makedirs(export_path, exist_ok=True)
+    action_map_df = pd.DataFrame({'action_index': range(len(action_labels)), 'action_label': action_labels})
+    with _real_open(os.path.join(export_path, 'action_mapping.csv'), 'w', newline='') as f:
+        action_map_df.to_csv(f, index=False)
 
-background_states = shap.kmeans(collect_background_states(agent, tf_env, n_episodes=EPISODES), k=50)
 
-feature_names = build_feature_names(parameters)
-action_labels = build_action_labels_from_parameters(parameters)
+def export_feature_names(export_path, feature_names):
+    _real_makedirs(export_path, exist_ok=True)
+    feature_map_df = pd.DataFrame({'feature_index': range(len(feature_names)), 'feature_name': feature_names})
+    with _real_open(os.path.join(export_path, 'feature_mapping.csv'), 'w', newline='') as f:
+        feature_map_df.to_csv(f, index=False)
 
-# contains state vectors of size (47,) for the following features:
-# 1. valid action mask (20 entries)
-# 2. bin_machine_failure (8 entries)
-# 3. rel_buffer_fill_in_out (19 entries)
-states_47 = [
-    [
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # valid actions first 20 entries
-    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # machine broken flags
-    1.0, 1.0, 0.16666666666666663, 1.0, 0.33333333333333337, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0,  # machine rel buffers
-    0.0, 0.0, 0.0  # source rel buffers
-    ],
-    [
-    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    0.33333333333333337, 1.0, 0.16666666666666663, 1.0, 0.5, 0.6666666666666667, 0.16666666666666663, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 0.33333333333333337, 1.0,
-    0.0, 0.0, 0.0
+if __name__ == "__main__":
+    AGENT_FOLDER = 'ppo1 - 47 states throughput'
+    AGENT_PATH = os.path.join('agents', AGENT_FOLDER)
+    ACTIONS_OUTPUT_PATH = os.path.join('log', '47 states throughput test', 'log_visualization')
+    FEATURE_OUTPUT_PATH = os.path.join('log', '47 states throughput test', 'log_visualization')
+    STATES_PATH = os.path.join("log", "47 states throughput test", "agent_reward_log.csv")  # CSV file containing logged agent states, from which a baseline is calculated.
+    TIME_STEPS = 10 ** 2
+    EPISODES = 1 ** 1
+    TOP_K = 10
+
+    # ! Check initialize_env.py to see if the state space matches.
+    env = simpy.Environment()
+    tf_env = Environment.create(
+    environment='production.envs.ProductionEnv',
+    max_episode_timesteps=TIME_STEPS,
+    )   
+    agent = Agent.load(directory=AGENT_PATH, format='tensorflow', environment=tf_env)
+
+    parameters = define_production_parameters(env, 0)
+    NUM_AVAILABLE_ACTIONS = len(build_action_labels_from_parameters(parameters))
+    critic_weights = fetch_critic_weights(agent)
+    background_states = shap.kmeans(collect_background_states(agent, tf_env, n_episodes=EPISODES), k=50)
+
+    feature_names = build_feature_names(parameters)
+    action_labels = build_action_labels_from_parameters(parameters)
+
+    # ? exporting action_labels and feature_names to csv file
+    # _real_makedirs(ACTIONS_OUTPUT_PATH, exist_ok=True)
+    # action_map_df = pd.DataFrame({'action_index': range(len(action_labels)), 'action_label': action_labels})
+    # with _real_open(os.path.join(ACTIONS_OUTPUT_PATH, 'action_mapping.csv'), 'w', newline='') as f:
+    #     action_map_df.to_csv(f, index=False)
+    export_action(ACTIONS_OUTPUT_PATH, action_labels)
+    export_feature_names(FEATURE_OUTPUT_PATH, feature_names)
+    # ?
+
+    # contains state vectors of size (47,) for the following features:
+    # 1. valid action mask (20 entries)
+    # 2. bin_machine_failure (8 entries)
+    # 3. rel_buffer_fill_in_out (19 entries)
+    states_47 = [
+        [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # valid actions first 20 entries
+        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # machine broken flags
+        1.0, 1.0, 0.16666666666666663, 1.0, 0.33333333333333337, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0, 0.16666666666666663, 1.0,  # machine rel buffers
+        0.0, 0.0, 0.0  # source rel buffers
+        ],
+        [
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        0.33333333333333337, 1.0, 0.16666666666666663, 1.0, 0.5, 0.6666666666666667, 0.16666666666666663, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 0.33333333333333337, 1.0,
+        0.0, 0.0, 0.0
+        ],
+        [
+        1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        1.0, 1.0, 0.8333333333333334, 1.0, 0.16666666666666663, 1.0, 0.5, 0.6666666666666667, 1.0, 1.0, 0.16666666666666663, 1.0, 1.0, 0.0, 1.0, 1.0,
+        0.0, 0.0, 0.0
+         ],
+        [
+        1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        1.0, 1.0, 0.6666666666666667, 1.0, 0.33333333333333337, 0.8333333333333334, 0.33333333333333337, 0.8333333333333334, 1.0, 1.0, 0.16666666666666663, 1.0, 0.8333333333333334, 0.33333333333333337, 1.0, 1.0,
+        0.0, 0.0, 0.0
+        ],
     ]
-]
 
-# contains state vectors of size (80,) for the following features:
-# 1. valid action mask (20 entries)
-# 2. bin_location (14 entries)
-# 3. bin_machine_failure (8 entries)
-# 4. rel_buffer_fill_in_out (19 entries)
-# 5. distance_to_action (11 entries)
-# 6. total_process_time (8 entries)
+    # contains state vectors of size (81,) for the following features:
+    # 1. valid action mask (21 entries)
+    # 2. bin_location (14 entries)
+    # 3. bin_machine_failure (8 entries)
+    # 4. rel_buffer_fill_in_out (19 entries)
+    # 5. distance_to_action (11 entries)
+    # 6. total_process_time (8 entries)
 
-states_80 = [
-    [
-    0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,  # valid action mask first 20 entries
-    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # agent location - machine/source/sink one-hot
-    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,  # machine failure flags
-    1.0, 1.0, 1.0, 1.0, 0.6666666666666667, 1.0, 1.0, 1.0, 0.5, 1.0, 0.0, 1.0, 1.0, 0.8333333333333334, 1.0, 0.16666666666666663, 0.0, 0.0, 0.0,  # rel buffers in/out
-    -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # distance to action destination
-    0.03564612344572155, 0.06746045665328886, 0.3626716318371299, 0.09322553295184832, 0.47325591487986696, 2.9510828526149706, 0.26557630611757477, 0.3229432733691529  # total process time for current orders at machines
+    states_80 = [
+        [
+        0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,  # valid action mask first 20 entries (without waiting, added later)
+        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # agent location - machine/source/sink one-hot
+        0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,  # machine failure flags
+        1.0, 1.0, 1.0, 1.0, 0.6666666666666667, 1.0, 1.0, 1.0, 0.5, 1.0, 0.0, 1.0, 1.0, 0.8333333333333334, 1.0, 0.16666666666666663, 0.0, 0.0, 0.0,  # rel buffers in/out
+        -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # distance to action destination
+        0.03564612344572155, 0.06746045665328886, 0.3626716318371299, 0.09322553295184832, 0.47325591487986696, 2.9510828526149706, 0.26557630611757477, 0.3229432733691529  # total process time for current orders at machines
+        ]
     ]
-]
+    current_state = states_47[1]
+    if parameters['TRANSP_AGENT_WAITING_ACTION']:
+        print("Waiting action is enabled, inserting 1.0 at the end of the valid action mask to reflect that waiting action is always valid.")
+        current_state = np.insert(current_state, NUM_AVAILABLE_ACTIONS-1, 1.0)
 
-current_state = states_80[0]
-weights = fetch_weights(agent)
-logits, probs, h0, h1 = forward(current_state, *weights)
+    valid_mask = np.array(current_state[:NUM_AVAILABLE_ACTIONS])
+    weights = fetch_weights(agent)
+    logits, probs, h0, h1 = forward(current_state, *weights, valid_mask=valid_mask)
 
-best_action = int(np.argmax(probs))
+    best_action = int(np.argmax(probs))
+    action = explain_action(current_state, best_action, action_labels, feature_names, *weights, top_k=TOP_K, method='integrated_gradients', valid_mask=valid_mask)
+    print(action)
 
-action = explain_action(current_state, best_action, action_labels, feature_names, *weights, top_k=TOP_K, method='integrated_gradients')
-print(action)
-
-phi = sverl_p(
-    state = np.array(current_state),
-    background_states = background_states,
-    critic_forward_fn = critic_value,
-    feature_names = feature_names,
-    top_k = TOP_K
-)
+    phi = shap_explainer(
+        state = current_state,
+        background_states = background_states,
+        critic_forward_fn = critic_value,
+        feature_names = feature_names,
+        top_k = TOP_K
+    )
